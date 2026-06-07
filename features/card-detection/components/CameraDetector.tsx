@@ -14,14 +14,17 @@ interface CameraDetectorProps {
 export const CameraDetector: React.FC<CameraDetectorProps> = ({ onCardDetected, areaThreshold }) => {
   const webcamRef = useRef<Webcam>(null);
   const videoRef = useRef<HTMLVideoElement | null>(null);
+  const [isMounted, setIsMounted] = useState(false);
   const [cvReady, setCvReady] = useState(false);
 
   useEffect(() => {
+    setIsMounted(true);
     loadOpenCV().then(() => setCvReady(true));
   }, []);
 
   useCardDetection(videoRef, { onCardDetected, areaThreshold });
 
+  if (!isMounted) return <div>Loading...</div>;
   if (!cvReady) return <div>Loading OpenCV...</div>;
 
   return (
