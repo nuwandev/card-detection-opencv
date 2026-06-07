@@ -1,1 +1,0 @@
-export { ScannerView } from "./ScannerView";

@@ -11,6 +11,9 @@ importers:
       next:
         specifier: 16.2.7
         version: 16.2.7(@babel/core@7.29.7)(react-dom@19.2.4(react@19.2.4))(react@19.2.4)
+      opencv-document-scanner:
+        specifier: ^1.2.2
+        version: 1.2.2
       react:
         specifier: 19.2.4
         version: 19.2.4
@@ -1630,6 +1633,9 @@ packages:
   object.values@1.2.1:
     resolution: {integrity: sha512-gXah6aZrcUxjWg2zR2MwouP2eHlCBzdV4pygudehaKXSGW4v2AsRQUK+lwwXhii6KFZcunEnmSUoYp5CXibxtA==}
     engines: {node: '>= 0.4'}
+
+  opencv-document-scanner@1.2.2:
+    resolution: {integrity: sha512-qUiLuS5jyJ0v2BYgQ9+zmefPNMJgyK5u/czPUxCnYfHt4lxt4U/jgYd2wJUtf4cK1ua1A9Ez7J4aKuHOhcap2Q==}
 
   optionator@0.9.4:
     resolution: {integrity: sha512-6IpQ7mKUxRcZNLIObR0hz7lxsapSSIYNZJwXPGeF0mTVqGKFIXj1DQcMoT22S3ROcLyY/rz0PWaWZ9ayWmad9g==}
@@ -3640,6 +3646,8 @@ snapshots:
       call-bound: 1.0.4
       define-properties: 1.2.1
       es-object-atoms: 1.1.2
+
+  opencv-document-scanner@1.2.2: {}
 
   optionator@0.9.4:
     dependencies:
