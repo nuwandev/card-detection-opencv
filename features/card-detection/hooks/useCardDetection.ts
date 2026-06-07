@@ -3,7 +3,7 @@ import { processFrame } from '@/features/card-detection/utils/opencvProcessor';
 import { CardDetectionConfig } from '@/features/card-detection/types';
 
 export const useCardDetection = (
-  videoRef: React.RefObject<HTMLVideoElement>,
+  videoRef: React.RefObject<HTMLVideoElement | null>,
   config: CardDetectionConfig
 ) => {
   const [isReady, setIsReady] = useState(false);

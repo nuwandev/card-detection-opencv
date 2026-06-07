@@ -6,7 +6,10 @@ import { loadOpenCV } from '@/lib/opencv/loader';
 import { useCardDetection } from '@/features/card-detection/hooks/useCardDetection';
 import { CardDetectionConfig } from '@/features/card-detection/types';
 
-interface CameraDetectorProps extends CardDetectionConfig {}
+interface CameraDetectorProps {
+  onCardDetected: () => void;
+  areaThreshold?: number;
+}
 
 export const CameraDetector: React.FC<CameraDetectorProps> = ({ onCardDetected, areaThreshold }) => {
   const webcamRef = useRef<Webcam>(null);
@@ -17,13 +20,6 @@ export const CameraDetector: React.FC<CameraDetectorProps> = ({ onCardDetected, 
     loadOpenCV().then(() => setCvReady(true));
   }, []);
 
-  // Sync webcam's video ref
-  useEffect(() => {
-    if (webcamRef.current?.video) {
-      videoRef.current = webcamRef.current.video;
-    }
-  }, [webcamRef.current?.video]);
-
   useCardDetection(videoRef, { onCardDetected, areaThreshold });
 
   if (!cvReady) return <div>Loading OpenCV...</div>;
@@ -31,6 +27,11 @@ export const CameraDetector: React.FC<CameraDetectorProps> = ({ onCardDetected, 
   return (
     <Webcam
       ref={webcamRef}
+      onUserMedia={() => {
+        if (webcamRef.current?.video) {
+          videoRef.current = webcamRef.current.video;
+        }
+      }}
       audio={false}
       videoConstraints={{ facingMode: 'environment' }}
       style={{ width: '100%', maxWidth: '640px' }}
