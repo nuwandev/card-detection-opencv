@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef } from "react";
+import Webcam from "react-webcam";
 
 import { useOpenCV } from "@/hooks/useOpenCV";
 import { useCamera } from "@/hooks/useCamera";
@@ -8,7 +9,7 @@ import { useCamera } from "@/hooks/useCamera";
 export default function Home() {
   const cvReady = useOpenCV();
 
-  const { videoRef } = useCamera();
+  const { webcamRef, getVideoElement } = useCamera();
 
   const canvasRef = useRef<HTMLCanvasElement>(null);
 
@@ -18,7 +19,7 @@ export default function Home() {
     let frameId = 0;
 
     const processFrame = () => {
-      const video = videoRef.current;
+      const video = getVideoElement();
       const canvas = canvasRef.current;
 
       if (!video || !canvas) {
@@ -173,15 +174,15 @@ export default function Home() {
     return () => {
       cancelAnimationFrame(frameId);
     };
-  }, [cvReady, videoRef]);
+  }, [cvReady, getVideoElement]);
 
   return (
     <main className="relative h-screen w-screen bg-black">
-      <video
-        ref={videoRef}
-        autoPlay
-        playsInline
-        muted
+      <Webcam
+        ref={webcamRef}
+        audio={false}
+        screenshotFormat="image/jpeg"
+        videoConstraints={{ facingMode: "environment" }}
         className="hidden"
       />
 

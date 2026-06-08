@@ -1,33 +1,18 @@
 "use client";
 
-import { useEffect, useRef } from "react";
+import { useRef } from "react";
+import Webcam from "react-webcam";
 
 export const useCamera = () => {
-  const videoRef = useRef<HTMLVideoElement>(null);
+  const webcamRef = useRef<Webcam>(null);
 
-  useEffect(() => {
-    let stream: MediaStream | null = null;
-
-    const start = async () => {
-      stream = await navigator.mediaDevices.getUserMedia({
-        video: {
-          facingMode: "environment",
-        },
-      });
-
-      if (videoRef.current) {
-        videoRef.current.srcObject = stream;
-      }
-    };
-
-    void start();
-
-    return () => {
-      stream?.getTracks().forEach((track) => track.stop());
-    };
-  }, []);
+  // Helper to access the underlying HTMLVideoElement
+  const getVideoElement = () => {
+    return webcamRef.current?.video;
+  };
 
   return {
-    videoRef,
+    webcamRef,
+    getVideoElement,
   };
 };
