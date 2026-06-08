@@ -1,69 +1,47 @@
 "use client";
 
-import { useState, useCallback, useRef } from "react";
+import { useCallback, useRef } from "react";
 import { Point } from "../types/geometry";
-import { detectDocument, isSameQuad } from "../utils/documentDetection";
+import { detectDocument } from "../utils/documentDetection";
 
-interface CardDetectionResult {
-  points: Point[] | null;
-  isStable: boolean;
-  stableCount: number;
-}
+const EMA_ALPHA = 0.3; // Smoothing factor
 
 export const useCardDetection = (cvReady: boolean) => {
-  const [result, setResult] = useState<CardDetectionResult>({
-    points: null,
-    isStable: false,
-    stableCount: 0,
-  });
-
-  const lastPointsRef = useRef<Point[] | null>(null);
-  const stableCountRef = useRef(0);
+  const pointsRef = useRef<Point[] | null>(null);
 
   const processFrame = useCallback((video: HTMLVideoElement, canvas: HTMLCanvasElement) => {
-    if (!cvReady) return;
+    if (!cvReady || !window.cv) return;
 
     const cv = window.cv;
     const ctx = canvas.getContext("2d");
     if (!ctx) return;
 
-    // Synchronize canvas size with video frame
+    // Synchronize canvas size
     if (canvas.width !== video.videoWidth || canvas.height !== video.videoHeight) {
       canvas.width = video.videoWidth;
       canvas.height = video.videoHeight;
     }
 
-    // Capture current frame
+    // Capture frame to canvas
     ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
 
     const src = cv.imread(canvas);
     
     try {
-      const points = detectDocument(cv, src);
+      const detected = detectDocument(cv, src);
 
-      if (points) {
-        if (isSameQuad(points, lastPointsRef.current, 50)) {
-          stableCountRef.current++;
+      if (detected) {
+        if (pointsRef.current) {
+          // Linear Interpolation for smoothing
+          pointsRef.current = detected.map((p, i) => ({
+            x: p.x * EMA_ALPHA + pointsRef.current![i].x * (1 - EMA_ALPHA),
+            y: p.y * EMA_ALPHA + pointsRef.current![i].y * (1 - EMA_ALPHA),
+          }));
         } else {
-          stableCountRef.current = 0;
+          pointsRef.current = detected;
         }
-        lastPointsRef.current = points;
-
-        const isStable = stableCountRef.current >= 10;
-
-        setResult({
-          points,
-          isStable,
-          stableCount: stableCountRef.current,
-        });
       } else {
-        stableCountRef.current = 0;
-        lastPointsRef.current = null;
-        setResult({
-          points: null,
-          isStable: false,
-          stableCount: 0,
-        });
+        pointsRef.current = null;
       }
     } catch (e) {
       console.error("Frame processing error:", e);
@@ -74,6 +52,6 @@ export const useCardDetection = (cvReady: boolean) => {
 
   return {
     processFrame,
-    ...result
+    pointsRef
   };
 };
