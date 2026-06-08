@@ -1,13 +1,20 @@
 import { Point } from "../types/geometry";
 
 /**
- * Orders corners: top-left, top-right, bottom-right, bottom-left.
+ * Robust corner ordering to prevent rotating jitter.
  */
 export function orderCorners(points: Point[]): Point[] {
   const sorted = [...points].sort((a, b) => a.y - b.y);
-  const topList = sorted.slice(0, 2).sort((a, b) => a.x - b.x);
-  const bottomList = sorted.slice(2, 4).sort((a, b) => b.x - a.x);
-  return [topList[0], topList[1], bottomList[0], bottomList[1]];
+  const top = sorted.slice(0, 2);
+  const bottom = sorted.slice(2, 4);
+
+  // Top two: Left is min X, Right is max X
+  top.sort((a, b) => a.x - b.x);
+  // Bottom two: Left is min X, Right is max X
+  bottom.sort((a, b) => a.x - b.x);
+
+  // Return: Top-Left, Top-Right, Bottom-Right, Bottom-Left
+  return [top[0], top[1], bottom[1], bottom[0]];
 }
 
 /**
@@ -40,7 +47,7 @@ export function adjustGamma(cv: any, src: any, dst: any, gamma: number = 1.3) {
 import { Point } from "../types/geometry";
 
 const ID_ASPECT_RATIO = 1.58; // Approx ID card ratio
-const RATIO_TOLERANCE = 0.3;
+const RATIO_TOLERANCE = 0.5; // Relaxed
 const MIN_AREA_RATIO = 0.05; // 5% of image area
 
 export function detectDocument(cv: any, src: any): Point[] | null {
@@ -66,7 +73,8 @@ export function detectDocument(cv: any, src: any): Point[] | null {
 
     const peri = cv.arcLength(cnt, true);
     const approx = new cv.Mat();
-    cv.approxPolyDP(cnt, approx, 0.04 * peri, true);
+    // Relaxed epsilon factor
+    cv.approxPolyDP(cnt, approx, 0.06 * peri, true);
 
     if (approx.rows === 4) {
       const data = approx.data32S;
@@ -81,11 +89,12 @@ export function detectDocument(cv: any, src: any): Point[] | null {
       const ratio = Math.max(width, height) / Math.min(width, height);
       
       if (Math.abs(ratio - ID_ASPECT_RATIO) < RATIO_TOLERANCE) {
-        const score = evaluateCandidate(cv, src, edges, pts);
+        const ordered = orderCorners(pts);
+        const score = evaluateCandidate(cv, src, edges, ordered);
         
         if (score < bestScore) {
           bestScore = score;
-          bestQuad = pts;
+          bestQuad = ordered;
         }
       }
     }
