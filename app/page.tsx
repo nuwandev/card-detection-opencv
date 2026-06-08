@@ -5,191 +5,140 @@ import Webcam from "react-webcam";
 
 import { useOpenCV } from "@/hooks/useOpenCV";
 import { useCamera } from "@/hooks/useCamera";
+import { useCardDetection } from "@/hooks/useCardDetection";
 
 export default function Home() {
   const cvReady = useOpenCV();
-
   const { webcamRef, getVideoElement } = useCamera();
+  const { processFrame, points, isStable } = useCardDetection(cvReady);
 
-  const canvasRef = useRef<HTMLCanvasElement>(null);
+  const processingCanvasRef = useRef<HTMLCanvasElement>(null);
+  const overlayCanvasRef = useRef<HTMLCanvasElement>(null);
 
   useEffect(() => {
     if (!cvReady) return;
 
-    let frameId = 0;
+    let frameId: number;
+    let lastTime = 0;
+    const fps = 20; // Limit to 20 FPS
+    const interval = 1000 / fps;
 
-    const processFrame = () => {
+    const loop = (time: number) => {
       const video = getVideoElement();
-      const canvas = canvasRef.current;
+      const canvas = processingCanvasRef.current;
 
-      if (!video || !canvas) {
-        frameId = requestAnimationFrame(processFrame);
-        return;
+      if (time - lastTime >= interval) {
+        if (video && canvas && video.readyState >= 2) {
+          processFrame(video, canvas);
+        }
+        lastTime = time;
       }
+      frameId = requestAnimationFrame(loop);
+    };
 
-      if (video.readyState < 2) {
-        frameId = requestAnimationFrame(processFrame);
-        return;
-      }
+    frameId = requestAnimationFrame(loop);
+    return () => cancelAnimationFrame(frameId);
+  }, [cvReady, getVideoElement, processFrame]);
 
-      const cv = window.cv;
+  // Draw overlay
+  useEffect(() => {
+    const canvas = overlayCanvasRef.current;
+    const video = getVideoElement();
+    if (!canvas || !video) return;
 
-      const ctx = canvas.getContext("2d");
+    const ctx = canvas.getContext("2d");
+    if (!ctx) return;
 
-      if (!ctx) {
-        frameId = requestAnimationFrame(processFrame);
-        return;
-      }
-
+    // Keep overlay resolution in sync with video
+    if (canvas.width !== video.videoWidth || canvas.height !== video.videoHeight) {
       canvas.width = video.videoWidth;
       canvas.height = video.videoHeight;
+    }
 
-      ctx.drawImage(
-        video,
-        0,
-        0,
-        canvas.width,
-        canvas.height
-      );
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
 
-      const src = cv.imread(canvas);
+    if (points) {
+      // Draw detected polygon
+      ctx.strokeStyle = isStable ? "#00ff00" : "#ffff00";
+      ctx.lineWidth = 6;
+      ctx.lineJoin = "round";
+      
+      ctx.beginPath();
+      ctx.moveTo(points[0].x, points[0].y);
+      ctx.lineTo(points[1].x, points[1].y);
+      ctx.lineTo(points[2].x, points[2].y);
+      ctx.lineTo(points[3].x, points[3].y);
+      ctx.closePath();
+      ctx.stroke();
 
-      const gray = new cv.Mat();
-      const edges = new cv.Mat();
+      // Inner fill for better visibility
+      ctx.fillStyle = isStable ? "rgba(0, 255, 0, 0.2)" : "rgba(255, 255, 0, 0.1)";
+      ctx.fill();
 
-      const contours = new cv.MatVector();
-      const hierarchy = new cv.Mat();
-
-      try {
-        cv.cvtColor(
-          src,
-          gray,
-          cv.COLOR_RGBA2GRAY
-        );
-
-        cv.GaussianBlur(
-          gray,
-          gray,
-          new cv.Size(5, 5),
-          0
-        );
-
-        cv.Canny(
-          gray,
-          edges,
-          75,
-          200
-        );
-
-        cv.findContours(
-          edges,
-          contours,
-          hierarchy,
-          cv.RETR_LIST,
-          cv.CHAIN_APPROX_SIMPLE
-        );
-
-        let largestArea = 0;
-        let largestQuad: any = null;
-
-        for (let i = 0; i < contours.size(); i++) {
-          const contour = contours.get(i);
-
-          const perimeter = cv.arcLength(
-            contour,
-            true
-          );
-
-          const approx = new cv.Mat();
-
-          cv.approxPolyDP(
-            contour,
-            approx,
-            0.02 * perimeter,
-            true
-          );
-
-          if (approx.rows === 4) {
-            const area =
-              cv.contourArea(contour);
-
-            if (area > largestArea) {
-              largestArea = area;
-
-              if (largestQuad) {
-                largestQuad.delete();
-              }
-
-              largestQuad = approx.clone();
-            }
-          }
-
-          contour.delete();
-          approx.delete();
-        }
-
-        if (largestQuad) {
-          const color = new cv.Scalar(
-            0,
-            255,
-            0,
-            255
-          );
-
-          const quadVector =
-            new cv.MatVector();
-
-          quadVector.push_back(largestQuad);
-
-          cv.polylines(
-            src,
-            quadVector,
-            true,
-            color,
-            5
-          );
-
-          quadVector.delete();
-          largestQuad.delete();
-        }
-
-        cv.imshow(canvas, src);
-      } finally {
-        src.delete();
-
-        gray.delete();
-        edges.delete();
-
-        contours.delete();
-        hierarchy.delete();
-      }
-
-      frameId = requestAnimationFrame(
-        processFrame
-      );
-    };
-
-    processFrame();
-
-    return () => {
-      cancelAnimationFrame(frameId);
-    };
-  }, [cvReady, getVideoElement]);
+      // Draw corner points
+      ctx.fillStyle = "white";
+      points.forEach(p => {
+        ctx.beginPath();
+        ctx.arc(p.x, p.y, 5, 0, Math.PI * 2);
+        ctx.fill();
+      });
+    }
+  }, [points, isStable, getVideoElement]);
 
   return (
-    <main className="relative h-screen w-screen bg-black">
-      <Webcam
-        ref={webcamRef}
-        audio={false}
-        screenshotFormat="image/jpeg"
-        videoConstraints={{ facingMode: "environment" }}
-        className="hidden"
-      />
+    <main className="fixed inset-0 bg-black flex items-center justify-center overflow-hidden">
+      {/* Container: Stacked elements using relative/absolute */}
+      <div className="relative w-full h-full">
+        {!cvReady && (
+          <div className="absolute inset-0 flex flex-col items-center justify-center z-50 bg-black/90">
+            <div className="w-10 h-10 border-4 border-blue-500 border-t-transparent rounded-full animate-spin mb-4" />
+            <p className="text-blue-400 font-medium text-xs tracking-widest">INITIALIZING...</p>
+          </div>
+        )}
 
-      <canvas
-        ref={canvasRef}
-        className="h-full w-full object-cover"
-      />
+        {/* Video feed - The only source */}
+        <Webcam
+          ref={webcamRef}
+          audio={false}
+          videoConstraints={{ 
+            facingMode: "environment",
+            width: { ideal: 640 },
+            height: { ideal: 480 }
+          }}
+          className="absolute inset-0 w-full h-full object-cover"
+        />
+
+        {/* Overlay canvas - Perfectly aligned on top */}
+        <canvas
+          ref={overlayCanvasRef}
+          className="absolute inset-0 w-full h-full object-cover z-10"
+        />
+
+        {/* Hidden processing canvas */}
+        <canvas ref={processingCanvasRef} className="hidden" />
+
+        {/* HUD Elements */}
+        <div className="absolute inset-0 z-20 pointer-events-none flex flex-col items-center justify-between p-6">
+          {/* Header */}
+          <div className="mt-8 px-4 py-2 bg-black/50 backdrop-blur-md rounded-full border border-white/10">
+            <p className={`text-[10px] font-bold uppercase tracking-widest ${
+              isStable ? "text-green-400" : "text-white/70"
+            }`}>
+              {isStable ? "● CARD DETECTED" : points ? "● ALIGNING..." : "● SCANNING..."}
+            </p>
+          </div>
+
+          {/* Frame Guide - Centered */}
+          <div className="w-full max-w-sm aspect-[1.6] border-2 border-white/30 rounded-2xl shadow-[0_0_0_9999px_rgba(0,0,0,0.5)]" />
+
+          {/* Footer instruction */}
+          <div className="mb-8 px-4 py-2 bg-black/50 backdrop-blur-md rounded-lg">
+            <p className="text-[10px] uppercase text-white/50 tracking-widest">
+              Position card inside the frame
+            </p>
+          </div>
+        </div>
+      </div>
     </main>
   );
 }
