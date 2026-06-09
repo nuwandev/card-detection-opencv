@@ -10,8 +10,8 @@ export const useOpenCV = () => {
 
   useEffect(() => {
     if (window.cv) {
-      setReady(true);
-      return;
+      const timeout = setTimeout(() => setReady(true), 0);
+      return () => clearTimeout(timeout);
     }
 
     const script = document.createElement("script");

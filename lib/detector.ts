@@ -2,14 +2,13 @@ import { Point } from "../types/geometry";
 import { orderCorners } from "./geometry";
 
 const ID_ASPECT_RATIO = 1.58;
-const RATIO_TOLERANCE = 0.2;
 const MIN_AREA_RATIO = 0.05;
 
 /**
  * Detects a quadrilateral document within the provided image source.
  * Orchestrates the OpenCV image processing pipeline.
  */
-export function detectDocument(cv: any, src: any): Point[] | null {
+export function detectDocument(cv: Window['cv'], src: Mat): Point[] | null {
   const gray = new cv.Mat();
   const edges = new cv.Mat();
   const blurred = new cv.Mat();
@@ -94,7 +93,7 @@ export function detectDocument(cv: any, src: any): Point[] | null {
  * Evaluates a candidate quadrilateral's quality by normalizing all signals
  * into a shared 0-1 space to ensure environmental and resolution independence.
  */
-function evaluateCandidate(cv: any, src: any, edges: any, pts: Point[], ratio: number, peri: number): number {
+function evaluateCandidate(cv: Window['cv'], src: Mat, edges: Mat, pts: Point[], ratio: number, peri: number): number {
   const mask = cv.Mat.zeros(src.rows, src.cols, cv.CV_8U);
   const poly = cv.matFromArray(4, 1, cv.CV_32SC2, [pts[0].x, pts[0].y, pts[1].x, pts[1].y, pts[2].x, pts[2].y, pts[3].x, pts[3].y]);
   const pols = new cv.MatVector();

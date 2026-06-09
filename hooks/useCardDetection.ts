@@ -3,7 +3,6 @@
 import { useCallback, useRef, useState, useEffect } from "react";
 import { Point } from "../types/geometry";
 import { detectDocument } from "../lib/detector";
-import { frameToMat } from "../lib/frame";
 
 // High alpha makes tracking more responsive but more prone to jitter.
 const EMA_ALPHA = 0.5;
@@ -14,13 +13,12 @@ export type DetectionState = 'READY' | 'DETECTING' | 'DETECTED' | 'ERROR';
 
 /**
  * Hook managing the card detection lifecycle.
- * Accepts refs to the video and guide frame to automatically handle ROI cropping
- * via a canvas-based approach.
+ * Accepts refs to the video (or Webcam component) and guide frame.
  */
 export const useCardDetection = (
   cv: Window['cv'] | null,
-  videoRef: React.RefObject<HTMLVideoElement>,
-  frameRef: React.RefObject<HTMLDivElement>
+  videoRef: React.RefObject<HTMLVideoElement | { video: HTMLVideoElement | null } | null>,
+  frameRef: React.RefObject<HTMLElement | null>
 ) => {
   const [state, setState] = useState<DetectionState>('READY');
   const [points, setPoints] = useState<Point[] | null>(null);
@@ -34,9 +32,11 @@ export const useCardDetection = (
   }, []);
 
   const getCroppedFrame = useCallback(() => {
-    const video = videoRef.current;
+    // Handle both raw HTMLVideoElement and react-webcam Webcam component
+    const current = videoRef.current;
+    const video = (current && 'video' in current) ? current.video : current;
     const frame = frameRef.current;
-    if (!video || !frame || !video.videoWidth || !canvasRef.current) return null;
+    if (!cv || !video || !(video instanceof HTMLVideoElement) || !frame || !video.videoWidth || !canvasRef.current) return null;
 
     // Use parent container for scaling calculations (as per verified implementation)
     const container = frame.parentElement;

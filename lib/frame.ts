@@ -2,7 +2,7 @@
  * Captures the current video frame from the video element and converts it
  * into an OpenCV matrix (Mat) for processing.
  */
-export const frameToMat = (cv: any, video: HTMLVideoElement, canvas: HTMLCanvasElement): any | null => {
+export const frameToMat = (cv: Window['cv'], video: HTMLVideoElement, canvas: HTMLCanvasElement): Mat | null => {
   if (video.videoWidth === 0 || video.videoHeight === 0) return null;
 
   const ctx = canvas.getContext("2d");
