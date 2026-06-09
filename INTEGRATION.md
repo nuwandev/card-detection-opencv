@@ -31,9 +31,10 @@ Copy the following modules into your project structure:
     <Webcam ref={webcamRef} />
     ```
 
-3.  **Orchestrate Detection**:
+3.  **Orchestrate Detection** (Optionally pass an ROI):
     ```typescript
-    const { state, points, process } = useCardDetection(cv, webcamRef.current?.video || null);
+    // Optionally define an ROI object: { x, y, width, height }
+    const { state, points, process } = useCardDetection(cv, webcamRef.current?.video || null, roi);
 
     useEffect(() => {
       if (!ready || !cv) return;
