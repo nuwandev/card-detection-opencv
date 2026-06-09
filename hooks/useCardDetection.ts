@@ -5,11 +5,17 @@ import { Point } from "../types/geometry";
 import { detectDocument } from "../lib/detector";
 import { frameToMat } from "../runtime/frame";
 
-const EMA_ALPHA = 0.5; // Aggressive tracking, less smoothing
-const MAX_MISSED_FRAMES = 5; // How many frames to "ignore" a failure
+// High alpha makes tracking more responsive but more prone to jitter.
+const EMA_ALPHA = 0.5;
+// Defines the buffer for failure before resetting the detected state.
+const MAX_MISSED_FRAMES = 5;
 
 export type DetectionState = 'READY' | 'DETECTING' | 'DETECTED' | 'ERROR';
 
+/**
+ * Hook managing the card detection lifecycle, including frame processing,
+ * state transitions, and coordinate smoothing.
+ */
 export const useCardDetection = (
   cv: Window['cv'] | null,
   videoElement: HTMLVideoElement | null
@@ -19,7 +25,6 @@ export const useCardDetection = (
   const missedFrames = useRef(0);
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
 
-  // Initialize canvas only once on client
   useEffect(() => {
     if (typeof document !== "undefined" && !canvasRef.current) {
       canvasRef.current = document.createElement("canvas");
@@ -32,7 +37,6 @@ export const useCardDetection = (
       return;
     }
 
-    // Use runtime frame processor
     const src = frameToMat(cv, videoElement, canvasRef.current);
     if (!src) return;
 
@@ -44,7 +48,7 @@ export const useCardDetection = (
         setState('DETECTED');
         
         if (points) {
-          // Linear Interpolation for smoothing
+          // Use Exponential Moving Average (EMA) to smooth corner movement and reduce visual jitter.
           setPoints(detected.map((p, i) => ({
             x: p.x * EMA_ALPHA + points[i].x * (1 - EMA_ALPHA),
             y: p.y * EMA_ALPHA + points[i].y * (1 - EMA_ALPHA),
@@ -53,7 +57,6 @@ export const useCardDetection = (
           setPoints(detected);
         }
       } else {
-        // Increment counter instead of immediately nulling
         missedFrames.current += 1;
         if (missedFrames.current >= MAX_MISSED_FRAMES) {
           setPoints(null);
@@ -62,7 +65,6 @@ export const useCardDetection = (
       }
     } catch (e) {
       console.error("Frame processing error:", e);
-      // Handle error same as missing
       missedFrames.current += 1;
       if (missedFrames.current >= MAX_MISSED_FRAMES) {
         setPoints(null);
@@ -73,7 +75,6 @@ export const useCardDetection = (
     }
   }, [cv, videoElement, points, state]);
 
-  // Ensure detecting state if we have a video element
   useEffect(() => {
     if (videoElement && state === 'READY') {
       setState('DETECTING');

@@ -1,10 +1,14 @@
 import { Point } from "../types/geometry";
 import { orderCorners } from "../utils/geometry";
 
-const ID_ASPECT_RATIO = 1.58; // Approx ID card ratio
-const RATIO_TOLERANCE = 0.5; // Relaxed
-const MIN_AREA_RATIO = 0.05; // 5% of image area
+const ID_ASPECT_RATIO = 1.58;
+const RATIO_TOLERANCE = 0.5;
+const MIN_AREA_RATIO = 0.05;
 
+/**
+ * Detects a quadrilateral document within the provided image source.
+ * Orchestrates the OpenCV image processing pipeline.
+ */
 export function detectDocument(cv: any, src: any): Point[] | null {
   const gray = new cv.Mat();
   const edges = new cv.Mat();
@@ -28,7 +32,6 @@ export function detectDocument(cv: any, src: any): Point[] | null {
 
     const peri = cv.arcLength(cnt, true);
     const approx = new cv.Mat();
-    // Relaxed epsilon factor
     cv.approxPolyDP(cnt, approx, 0.06 * peri, true);
 
     if (approx.rows === 4) {
@@ -38,7 +41,6 @@ export function detectDocument(cv: any, src: any): Point[] | null {
         { x: data[4], y: data[5] }, { x: data[6], y: data[7] }
       ];
       
-      // Structural Constraint: Aspect Ratio
       const width = Math.hypot(pts[0].x - pts[1].x, pts[0].y - pts[1].y);
       const height = Math.hypot(pts[1].x - pts[2].x, pts[1].y - pts[2].y);
       const ratio = Math.max(width, height) / Math.min(width, height);
@@ -60,6 +62,10 @@ export function detectDocument(cv: any, src: any): Point[] | null {
   return bestQuad;
 }
 
+/**
+ * Evaluates a candidate quadrilateral's quality based on edge support
+ * and internal color consistency to filter out false positives.
+ */
 function evaluateCandidate(cv: any, src: any, edges: any, pts: Point[]): number {
   const mask = new cv.Mat.zeros(src.rows, src.cols, cv.CV_8U);
   const poly = cv.matFromArray(4, 1, cv.CV_32SC2, [pts[0].x, pts[0].y, pts[1].x, pts[1].y, pts[2].x, pts[2].y, pts[3].x, pts[3].y]);
