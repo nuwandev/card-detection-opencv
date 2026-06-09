@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useRef, useState } from "react";
+import { useCallback, useRef, useState, useEffect } from "react";
 import { Point } from "../types/geometry";
 import { detectDocument } from "../lib/detector";
 import { frameToMat } from "../runtime/frame";
