@@ -86,41 +86,11 @@ export default function Home() {
     return () => cancelAnimationFrame(frameId);
   }, [ready, cv, process]);
 
-  // Calculate scaling factor and offset between video resolution and display size
-  const getScale = () => {
-    const video = webcamRef.current?.video;
-    if (!video || !video.videoWidth) return { scaleX: 1, scaleY: 1, offsetX: 0, offsetY: 0 };
-    
-    const rect = video.getBoundingClientRect();
-    const videoRatio = video.videoWidth / video.videoHeight;
-    const containerRatio = rect.width / rect.height;
-
-    let displayWidth = rect.width;
-    let displayHeight = rect.height;
-    let offsetX = 0;
-    let offsetY = 0;
-
-    // Handle object-contain (letterboxing)
-    if (containerRatio > videoRatio) {
-      displayWidth = rect.height * videoRatio;
-      offsetX = (rect.width - displayWidth) / 2;
-    } else {
-      displayHeight = rect.width / videoRatio;
-      offsetY = (rect.height - displayHeight) / 2;
-    }
-
-    return {
-      scaleX: displayWidth / video.videoWidth,
-      scaleY: displayHeight / video.videoHeight,
-      offsetX,
-      offsetY
-    };
-  };
-
   const { scaleX, scaleY, offsetX, offsetY } = getScale();
   const scaledPoints = points ? points.map(p => ({ 
-    x: p.x * scaleX + offsetX, 
-    y: p.y * scaleY + offsetY 
+    // Points are in video coordinate space, need to scale to display space
+    x: p.x * (1 / scaleX) + offsetX, 
+    y: p.y * (1 / scaleY) + offsetY 
   })) : null;
 
   return (
