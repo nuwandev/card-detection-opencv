@@ -2,6 +2,9 @@
 
 import { useEffect, useState } from "react";
 
+/**
+ * Hook to asynchronously load and initialize the OpenCV.js library.
+ */
 export const useOpenCV = () => {
   const [ready, setReady] = useState(false);
 
