@@ -2,7 +2,7 @@ import { Point } from "../types/geometry";
 import { orderCorners } from "../utils/geometry";
 
 const ID_ASPECT_RATIO = 1.58;
-const RATIO_TOLERANCE = 0.5;
+const RATIO_TOLERANCE = 0.2;
 const MIN_AREA_RATIO = 0.05;
 
 /**
@@ -13,82 +13,132 @@ export function detectDocument(cv: any, src: any): Point[] | null {
   const gray = new cv.Mat();
   const edges = new cv.Mat();
   const blurred = new cv.Mat();
-  cv.cvtColor(src, gray, cv.COLOR_RGBA2GRAY);
-  cv.GaussianBlur(gray, blurred, new cv.Size(5, 5), 0);
-  cv.Canny(blurred, edges, 20, 100);
-
   const contours = new cv.MatVector();
-  cv.findContours(edges, contours, new cv.Mat(), cv.RETR_EXTERNAL, cv.CHAIN_APPROX_SIMPLE);
+  const hierarchy = new cv.Mat();
 
   let bestQuad: Point[] | null = null;
   let bestScore = Infinity;
+  let secondBestScore = Infinity;
 
-  const minArea = src.cols * src.rows * MIN_AREA_RATIO;
+  try {
+    cv.cvtColor(src, gray, cv.COLOR_RGBA2GRAY);
+    cv.GaussianBlur(gray, blurred, new cv.Size(5, 5), 0);
+    cv.Canny(blurred, edges, 20, 100);
 
-  for (let i = 0; i < contours.size(); i++) {
-    const cnt = contours.get(i);
-    const area = cv.contourArea(cnt);
-    if (area < minArea) continue;
+    cv.findContours(edges, contours, hierarchy, cv.RETR_EXTERNAL, cv.CHAIN_APPROX_SIMPLE);
 
-    const peri = cv.arcLength(cnt, true);
-    const approx = new cv.Mat();
-    cv.approxPolyDP(cnt, approx, 0.06 * peri, true);
+    const minArea = src.cols * src.rows * MIN_AREA_RATIO;
 
-    if (approx.rows === 4) {
-      const data = approx.data32S;
-      const pts = [
-        { x: data[0], y: data[1] }, { x: data[2], y: data[3] },
-        { x: data[4], y: data[5] }, { x: data[6], y: data[7] }
-      ];
-      
-      const width = Math.hypot(pts[0].x - pts[1].x, pts[0].y - pts[1].y);
-      const height = Math.hypot(pts[1].x - pts[2].x, pts[1].y - pts[2].y);
-      const ratio = Math.max(width, height) / Math.min(width, height);
-      
-      if (Math.abs(ratio - ID_ASPECT_RATIO) < RATIO_TOLERANCE) {
-        const ordered = orderCorners(pts);
-        const score = evaluateCandidate(cv, src, edges, ordered);
-        
-        if (score < bestScore) {
-          bestScore = score;
-          bestQuad = ordered;
+    for (let i = 0; i < contours.size(); i++) {
+      const cnt = contours.get(i);
+      const approx = new cv.Mat();
+      try {
+        const area = cv.contourArea(cnt);
+        if (area < minArea) continue;
+
+        const peri = cv.arcLength(cnt, true);
+        cv.approxPolyDP(cnt, approx, 0.02 * peri, true);
+
+        if (approx.rows === 4) {
+          const data = approx.data32S;
+          const pts = [
+            { x: data[0], y: data[1] }, { x: data[2], y: data[3] },
+            { x: data[4], y: data[5] }, { x: data[6], y: data[7] }
+          ];
+          
+          const side1 = Math.hypot(pts[0].x - pts[1].x, pts[0].y - pts[1].y);
+          const side2 = Math.hypot(pts[1].x - pts[2].x, pts[1].y - pts[2].y);
+          const width = Math.max(side1, side2);
+          const height = Math.min(side1, side2);
+          const ratio = width / height;
+          
+          if (Math.abs(ratio - ID_ASPECT_RATIO) < 0.3) {
+            const ordered = orderCorners(pts);
+            const score = evaluateCandidate(cv, src, edges, ordered, ratio, peri);
+            
+            if (score < bestScore) {
+              secondBestScore = bestScore;
+              bestScore = score;
+              bestQuad = ordered;
+            } else if (score < secondBestScore) {
+              secondBestScore = score;
+            }
+          }
         }
+      } finally {
+        cnt.delete();
+        approx.delete();
       }
     }
-    approx.delete();
+  } finally {
+    gray.delete(); 
+    edges.delete(); 
+    blurred.delete(); 
+    contours.delete();
+    hierarchy.delete();
   }
 
-  gray.delete(); edges.delete(); blurred.delete(); contours.delete();
-  return bestQuad;
+  // Confidence Check: Ensure best candidate is sufficiently better than others
+  // and meets a minimum quality floor (score < 0 means "net positive" evidence)
+  const CONFIDENCE_GAP = 0.15;
+  const QUALITY_FLOOR = 0.0;
+
+  if (bestScore < QUALITY_FLOOR && (secondBestScore - bestScore) > CONFIDENCE_GAP) {
+    return bestQuad;
+  }
+
+  return null;
 }
 
 /**
- * Evaluates a candidate quadrilateral's quality based on edge support
- * and internal color consistency to filter out false positives.
+ * Evaluates a candidate quadrilateral's quality by normalizing all signals
+ * into a shared 0-1 space to ensure environmental and resolution independence.
  */
-function evaluateCandidate(cv: any, src: any, edges: any, pts: Point[]): number {
-  const mask = new cv.Mat.zeros(src.rows, src.cols, cv.CV_8U);
-  // Need to adjust points for mask creation if evaluating in global space, 
-  // but evaluation currently happens on processingSrc which might be ROI-scoped.
-  // Assuming pts are already relative to processingSrc.
+function evaluateCandidate(cv: any, src: any, edges: any, pts: Point[], ratio: number, peri: number): number {
+  const mask = cv.Mat.zeros(src.rows, src.cols, cv.CV_8U);
   const poly = cv.matFromArray(4, 1, cv.CV_32SC2, [pts[0].x, pts[0].y, pts[1].x, pts[1].y, pts[2].x, pts[2].y, pts[3].x, pts[3].y]);
   const pols = new cv.MatVector();
-  pols.push_back(poly);
-  cv.fillPoly(mask, pols, new cv.Scalar(255));
-
-  const mean = new cv.Mat(1, 1, cv.CV_32FC4);
-  const stdDev = new cv.Mat(1, 1, cv.CV_32FC4);
-  cv.meanStdDev(src, mean, stdDev, mask);
-  
-  const colorConsistency = stdDev.doubleAt(0, 0) + stdDev.doubleAt(0, 1) + stdDev.doubleAt(0, 2);
-
+  const mean = new cv.Mat();
+  const stdDev = new cv.Mat();
   const edgeMasked = new cv.Mat();
-  cv.bitwise_and(edges, mask, edgeMasked);
-  const edgeSupport = cv.countNonZero(edgeMasked);
-  
-  mask.delete(); poly.delete(); pols.delete(); mean.delete(); stdDev.delete(); edgeMasked.delete();
 
-  if (edgeSupport < 100) return Infinity;
+  try {
+    pols.push_back(poly);
+    cv.fillPoly(mask, pols, new cv.Scalar(255));
 
-  return colorConsistency - (edgeSupport * 0.01);
+    cv.meanStdDev(src, mean, stdDev, mask);
+    
+    let colorConsistency = 0;
+    const channels = Math.min(stdDev.rows, 3);
+    for (let i = 0; i < channels; i++) {
+      colorConsistency += stdDev.doubleAt(i, 0);
+    }
+
+    cv.bitwise_and(edges, mask, edgeMasked);
+    const edgeSupport = cv.countNonZero(edgeMasked);
+    
+    // 1. Ratio Score (0 to 1): 0 is perfect match, 1 is at tolerance limit (0.3)
+    const ratioError = Math.abs(ratio - ID_ASPECT_RATIO);
+    const ratioScore = Math.min(ratioError / 0.3, 1.0);
+
+    // 2. Texture Score (0 to 1): 0 is flat/consistent, 1 is high noise (> 100 stddev sum)
+    const textureScore = Math.min(colorConsistency / 100, 1.0);
+
+    // 3. Edge Score (0 to 1): 0 is no edges, 1 is high density (> 0.5 per pixel of perimeter)
+    const edgeDensity = edgeSupport / peri;
+    const edgeScore = Math.min(edgeDensity / 0.5, 1.0);
+
+    // Weights: Favor structural evidence (edges) over geometry alone.
+    // Lower score is better.
+    // Range: (0.3 * 0 + 0.2 * 0 - 0.6 * 1) = -0.6 [Perfect]
+    // Range: (0.3 * 1 + 0.2 * 1 - 0.6 * 0) = +0.5 [Poor]
+    return (0.3 * ratioScore) + (0.2 * textureScore) - (0.6 * edgeScore);
+  } finally {
+    mask.delete(); 
+    poly.delete(); 
+    pols.delete(); 
+    mean.delete(); 
+    stdDev.delete(); 
+    edgeMasked.delete();
+  }
 }
