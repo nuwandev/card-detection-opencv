@@ -38,19 +38,36 @@ export const useCardDetection = (
     const frame = frameRef.current;
     if (!video || !frame || !video.videoWidth || !canvasRef.current) return null;
 
-    const videoRect = video.getBoundingClientRect();
+    // Use parent container for scaling calculations (as per verified implementation)
+    const container = frame.parentElement;
+    if (!container) return null;
+    
+    const { width: containerW, height: containerH } = container.getBoundingClientRect();
     const frameRect = frame.getBoundingClientRect();
+    const containerRect = container.getBoundingClientRect();
 
-    const scaleX = video.videoWidth / videoRect.width;
-    const scaleY = video.videoHeight / videoRect.height;
+    // Mapping video pixels to container space (object-fit: cover)
+    const scaleX = video.videoWidth / containerW;
+    const scaleY = video.videoHeight / containerH;
+    const scale = Math.max(scaleX, scaleY);
 
-    // Calculate crop dimensions relative to video source
-    const srcX = Math.max(0, (frameRect.left - videoRect.left) * scaleX);
-    const srcY = Math.max(0, (frameRect.top - videoRect.top) * scaleY);
-    const srcW = Math.min(frameRect.width * scaleX, video.videoWidth - srcX);
-    const srcH = Math.min(frameRect.height * scaleY, video.videoHeight - srcY);
+    // Calculate offsets to account for object-fit: cover centering
+    const renderedW = video.videoWidth / scale;
+    const renderedH = video.videoHeight / scale;
+    const offsetX = (containerW - renderedW) / 2;
+    const offsetY = (containerH - renderedH) / 2;
 
-    // Resize canvas to frame dimensions for analysis
+    // Calculate frame position relative to container
+    const frameX = frameRect.left - containerRect.left;
+    const frameY = frameRect.top - containerRect.top;
+
+    // Bridge the gap: Frame rect (DOM) to Video (Pixel)
+    const srcX = (frameX - offsetX) * scale;
+    const srcY = (frameY - offsetY) * scale;
+    const srcW = frameRect.width * scale;
+    const srcH = frameRect.height * scale;
+
+    // Resize canvas for analysis
     const analysisCanvas = canvasRef.current;
     analysisCanvas.width = srcW;
     analysisCanvas.height = srcH;

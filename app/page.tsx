@@ -36,39 +36,27 @@ export default function Home() {
     return () => cancelAnimationFrame(frameId);
   }, [ready, cv, process]);
 
-  const getScale = () => {
+  // Scaling factor for overlay: Map video pixels to display pixels (object-fit: cover)
+  const getDisplayScale = () => {
     const video = webcamRef.current?.video;
-    if (!video || !video.videoWidth) return { scaleX: 1, scaleY: 1, offsetX: 0, offsetY: 0 };
+    const container = frameRef.current?.parentElement;
+    if (!video || !container || !video.videoWidth) return { scale: 1, offsetX: 0, offsetY: 0 };
     
-    const rect = video.getBoundingClientRect();
-    const videoRatio = video.videoWidth / video.videoHeight;
-    const containerRatio = rect.width / rect.height;
-
-    let displayWidth = rect.width;
-    let displayHeight = rect.height;
-    let offsetX = 0;
-    let offsetY = 0;
-
-    if (containerRatio > videoRatio) {
-      displayWidth = rect.height * videoRatio;
-      offsetX = (rect.width - displayWidth) / 2;
-    } else {
-      displayHeight = rect.width / videoRatio;
-      offsetY = (rect.height - displayHeight) / 2;
-    }
-
-    return {
-      scaleX: video.videoWidth / displayWidth,
-      scaleY: video.videoHeight / displayHeight,
-      offsetX,
-      offsetY
-    };
+    const { width: containerW, height: containerH } = container.getBoundingClientRect();
+    const scale = Math.max(video.videoWidth / containerW, video.videoHeight / containerH);
+    
+    const renderedW = video.videoWidth / scale;
+    const renderedH = video.videoHeight / scale;
+    const offsetX = (containerW - renderedW) / 2;
+    const offsetY = (containerH - renderedH) / 2;
+    
+    return { scale, offsetX, offsetY };
   };
 
-  const { scaleX, scaleY, offsetX, offsetY } = getScale();
+  const { scale, offsetX, offsetY } = getDisplayScale();
   const scaledPoints = points ? points.map(p => ({ 
-    x: p.x * (1 / scaleX) + offsetX, 
-    y: p.y * (1 / scaleY) + offsetY 
+    x: (p.x / scale) + offsetX, 
+    y: (p.y / scale) + offsetY 
   })) : null;
 
   return (
