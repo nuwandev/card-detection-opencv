@@ -9,19 +9,7 @@ export default function Home() {
   const { ready, cv } = useOpenCV();
   const webcamRef = useRef<Webcam>(null);
   
-  const frameRef = useRef<HTMLDivElement>(null);
-  const [roi, setRoi] = useState<{x: number, y: number, width: number, height: number} | undefined>();
-
-  // Calculate ROI once the frame is mounted
-  useEffect(() => {
-    if (frameRef.current) {
-      const rect = frameRef.current.getBoundingClientRect();
-      setRoi({ x: rect.left, y: rect.top, width: rect.width, height: rect.height });
-    }
-  }, []);
-  
-  // Hook usage: pass cv instance, video element, and the ROI
-  const { points, process } = useCardDetection(cv, webcamRef.current?.video || null, roi);
+  const { points, process } = useCardDetection(cv, webcamRef.current?.video || null);
 
   // Detection Loop (Throttled for performance)
   useEffect(() => {
@@ -104,7 +92,7 @@ export default function Home() {
             </p>
           </div>
 
-          <div ref={frameRef} className="w-full max-w-sm aspect-[1.6] border-2 border-white/30 rounded-2xl shadow-[0_0_0_9999px_rgba(0,0,0,0.5)]" />
+          <div className="w-full max-w-sm aspect-[1.6] border-2 border-white/30 rounded-2xl shadow-[0_0_0_9999px_rgba(0,0,0,0.5)]" />
 
           <div className="mb-8 px-4 py-2 bg-black/50 backdrop-blur-md rounded-lg">
             <p className="text-[10px] uppercase text-white/50 tracking-widest">
