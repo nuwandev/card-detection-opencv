@@ -1,5 +1,5 @@
 import { Point } from "../types/geometry";
-import { orderCorners } from "../utils/geometry";
+import { orderCorners } from "./geometry";
 
 const ID_ASPECT_RATIO = 1.58;
 const RATIO_TOLERANCE = 0.2;

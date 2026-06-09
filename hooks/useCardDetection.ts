@@ -3,7 +3,7 @@
 import { useCallback, useRef, useState, useEffect } from "react";
 import { Point } from "../types/geometry";
 import { detectDocument } from "../lib/detector";
-import { frameToMat } from "../runtime/frame";
+import { frameToMat } from "../lib/frame";
 
 // High alpha makes tracking more responsive but more prone to jitter.
 const EMA_ALPHA = 0.5;
