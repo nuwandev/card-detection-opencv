@@ -1,4 +1,4 @@
-import { Point, ROI } from "../types/geometry";
+import { Point } from "../types/geometry";
 import { orderCorners } from "../utils/geometry";
 
 const ID_ASPECT_RATIO = 1.58;
