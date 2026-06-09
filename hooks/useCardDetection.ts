@@ -5,7 +5,7 @@ import { Point } from "../types/geometry";
 import { detectDocument } from "../lib/detector";
 import { frameToMat } from "../runtime/frame";
 
-const EMA_ALPHA = 0.15; // Lower alpha = smoother, less jittery
+const EMA_ALPHA = 0.5; // Aggressive tracking, less smoothing
 const MAX_MISSED_FRAMES = 5; // How many frames to "ignore" a failure
 
 export const useCardDetection = (

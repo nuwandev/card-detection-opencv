@@ -17,7 +17,7 @@ export default function Home() {
 
     let frameId: number;
     let lastTime = 0;
-    const interval = 1000 / 15; // 15 FPS detection
+    const interval = 1000 / 24; // 24 FPS detection
 
     const loop = (time: number) => {
       if (time - lastTime >= interval) {
