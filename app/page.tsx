@@ -13,7 +13,7 @@ export default function Home() {
   const frameRef = useRef<HTMLDivElement>(null);
   const [displayScale, setDisplayScale] = useState<DisplayScale>({ scale: 1, offsetX: 0, offsetY: 0 });
 
-  const { state, points, process } = useCardDetection(
+  const { state, points, coverage, process } = useCardDetection(
     cv, 
     webcamRef, 
     frameRef
@@ -39,6 +39,8 @@ export default function Home() {
 
   const scaledPoints = useMemo(() => scalePoints(points, displayScale), [points, displayScale]);
 
+  const isReadyToCapture = coverage > 0.85;
+
   return (
     <main className="fixed inset-0 bg-black flex items-center justify-center">
       <div className="relative w-full h-full">
@@ -55,19 +57,29 @@ export default function Home() {
           className="absolute inset-0 w-full h-full object-contain"
         />
 
+        {/* Debug Info (Top Left) */}
+        <div className="absolute top-4 left-4 z-30 flex flex-col gap-2 pointer-events-none">
+          <div className="px-3 py-1.5 bg-black/60 backdrop-blur-md rounded-lg border border-white/10">
+            <p className="text-[10px] text-white/50 uppercase tracking-tighter">Fitness (Coverage)</p>
+            <p className={`text-sm font-mono font-bold ${isReadyToCapture ? 'text-green-400' : 'text-white'}`}>
+              {(coverage * 100).toFixed(1)}%
+            </p>
+          </div>
+        </div>
+
         {/* Guide Frame (Matches original visual flow) */}
         <div className="absolute inset-0 z-20 pointer-events-none flex flex-col items-center justify-between p-6">
           <div className="mt-8 px-4 py-2 bg-black/50 backdrop-blur-md rounded-full border border-white/10">
-            <p className={`text-[10px] font-bold uppercase tracking-widest ${state === 'DETECTED' ? 'text-green-400' : 'text-amber-400'}`}>
-              ● {state}
+            <p className={`text-[10px] font-bold uppercase tracking-widest ${state === 'DETECTED' ? (isReadyToCapture ? 'text-green-400' : 'text-blue-400') : 'text-amber-400'}`}>
+              ● {state} {isReadyToCapture && "• READY"}
             </p>
           </div>
 
-          <div ref={frameRef} className={`w-full max-w-sm aspect-[1.6] border-2 ${state === 'DETECTED' ? 'border-green-500' : 'border-white/30'} rounded-2xl shadow-[0_0_0_9999px_rgba(0,0,0,0.5)]`} />
+          <div ref={frameRef} className={`w-full max-w-sm aspect-[1.6] border-2 transition-colors duration-200 ${isReadyToCapture ? 'border-green-500 shadow-[0_0_20px_rgba(34,197,94,0.3)]' : (state === 'DETECTED' ? 'border-blue-500' : 'border-white/30')} rounded-2xl shadow-[0_0_0_9999px_rgba(0,0,0,0.5)]`} />
 
           <div className="mb-8 px-4 py-2 bg-black/50 backdrop-blur-md rounded-lg">
             <p className="text-[10px] uppercase text-white/50 tracking-widest">
-              {state === 'DETECTED' ? 'Card detected!' : 'Position card inside the frame'}
+              {isReadyToCapture ? 'HOLD STEADY' : (state === 'DETECTED' ? 'Get closer to frame' : 'Position card inside the frame')}
             </p>
           </div>
         </div>

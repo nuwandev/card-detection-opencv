@@ -3,6 +3,7 @@
 import { useCallback, useRef, useState, useEffect } from "react";
 import { Point } from "../types/geometry";
 import { detectDocument } from "../lib/detector";
+import { calculateArea } from "../lib/geometry";
 
 // High alpha makes tracking more responsive but more prone to jitter.
 const EMA_ALPHA = 0.5;
@@ -22,6 +23,7 @@ export const useCardDetection = (
 ) => {
   const [state, setState] = useState<DetectionState>('READY');
   const [points, setPoints] = useState<Point[] | null>(null);
+  const [coverage, setCoverage] = useState<number>(0);
   const missedFrames = useRef(0);
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
 
@@ -78,7 +80,8 @@ export const useCardDetection = (
 
     return {
         mat: cv.imread(analysisCanvas),
-        offset: { x: srcX, y: srcY }
+        offset: { x: srcX, y: srcY },
+        roiArea: srcW * srcH
     };
   }, [cv, videoRef, frameRef]);
 
@@ -90,7 +93,7 @@ export const useCardDetection = (
 
     const cropped = getCroppedFrame();
     if (!cropped) return;
-    const { mat, offset } = cropped;
+    const { mat, offset, roiArea } = cropped;
 
     try {
       const detected = detectDocument(cv, mat);
@@ -99,6 +102,10 @@ export const useCardDetection = (
         missedFrames.current = 0;
         setState('DETECTED');
         
+        // Calculate coverage: how much of the ROI does the detected card fill?
+        const cardArea = calculateArea(detected);
+        setCoverage(cardArea / roiArea);
+
         // Offset detected points back to global video coordinates
         const globalPoints = detected.map(p => ({ x: p.x + offset.x, y: p.y + offset.y }));
 
@@ -112,6 +119,7 @@ export const useCardDetection = (
         }
       } else {
         missedFrames.current += 1;
+        setCoverage(0);
         if (missedFrames.current >= MAX_MISSED_FRAMES) {
           setPoints(null);
           setState('DETECTING');
@@ -120,6 +128,7 @@ export const useCardDetection = (
     } catch (e) {
       console.error("Frame processing error:", e);
       missedFrames.current += 1;
+      setCoverage(0);
       if (missedFrames.current >= MAX_MISSED_FRAMES) {
         setPoints(null);
         setState('DETECTING');
@@ -138,6 +147,7 @@ export const useCardDetection = (
   return {
     state,
     points,
+    coverage,
     process
   };
 };
