@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useRef, useState, useEffect } from "react";
-import { Point, ROI } from "../types/geometry";
+import { Point } from "../types/geometry";
 import { detectDocument } from "../lib/detector";
 import { frameToMat } from "../runtime/frame";
 
@@ -13,13 +13,14 @@ const MAX_MISSED_FRAMES = 5;
 export type DetectionState = 'READY' | 'DETECTING' | 'DETECTED' | 'ERROR';
 
 /**
- * Hook managing the card detection lifecycle, including frame processing,
- * state transitions, and coordinate smoothing.
+ * Hook managing the card detection lifecycle.
+ * Accepts refs to the video and guide frame to automatically handle ROI cropping
+ * via a canvas-based approach.
  */
 export const useCardDetection = (
   cv: Window['cv'] | null,
-  videoElement: HTMLVideoElement | null,
-  roi?: ROI
+  videoRef: React.RefObject<HTMLVideoElement>,
+  frameRef: React.RefObject<HTMLDivElement>
 ) => {
   const [state, setState] = useState<DetectionState>('READY');
   const [points, setPoints] = useState<Point[] | null>(null);
@@ -32,30 +33,65 @@ export const useCardDetection = (
     }
   }, []);
 
+  const getCroppedFrame = useCallback(() => {
+    const video = videoRef.current;
+    const frame = frameRef.current;
+    if (!video || !frame || !video.videoWidth || !canvasRef.current) return null;
+
+    const videoRect = video.getBoundingClientRect();
+    const frameRect = frame.getBoundingClientRect();
+
+    const scaleX = video.videoWidth / videoRect.width;
+    const scaleY = video.videoHeight / videoRect.height;
+
+    // Calculate crop dimensions relative to video source
+    const srcX = Math.max(0, (frameRect.left - videoRect.left) * scaleX);
+    const srcY = Math.max(0, (frameRect.top - videoRect.top) * scaleY);
+    const srcW = Math.min(frameRect.width * scaleX, video.videoWidth - srcX);
+    const srcH = Math.min(frameRect.height * scaleY, video.videoHeight - srcY);
+
+    // Resize canvas to frame dimensions for analysis
+    const analysisCanvas = canvasRef.current;
+    analysisCanvas.width = srcW;
+    analysisCanvas.height = srcH;
+    const ctx = analysisCanvas.getContext('2d');
+    if (!ctx) return null;
+
+    ctx.drawImage(video, srcX, srcY, srcW, srcH, 0, 0, srcW, srcH);
+
+    return {
+        mat: cv.imread(analysisCanvas),
+        offset: { x: srcX, y: srcY }
+    };
+  }, [cv, videoRef, frameRef]);
+
   const process = useCallback(() => {
-    if (!cv || !videoElement || !canvasRef.current) {
+    if (!cv || !videoRef.current) {
       if (!cv && state !== 'ERROR') setState('ERROR');
       return;
     }
 
-    const src = frameToMat(cv, videoElement, canvasRef.current);
-    if (!src) return;
+    const cropped = getCroppedFrame();
+    if (!cropped) return;
+    const { mat, offset } = cropped;
 
     try {
-      const detected = detectDocument(cv, src, roi);
+      const detected = detectDocument(cv, mat);
 
       if (detected) {
         missedFrames.current = 0;
         setState('DETECTED');
         
+        // Offset detected points back to global video coordinates
+        const globalPoints = detected.map(p => ({ x: p.x + offset.x, y: p.y + offset.y }));
+
         if (points) {
-          // Use Exponential Moving Average (EMA) to smooth corner movement and reduce visual jitter.
-          setPoints(detected.map((p, i) => ({
+          setPoints(globalPoints.map((p, i) => ({
             x: p.x * EMA_ALPHA + points[i].x * (1 - EMA_ALPHA),
             y: p.y * EMA_ALPHA + points[i].y * (1 - EMA_ALPHA),
           })));
         } else {
-          setPoints(detected);
+          setPoints(globalPoints);
         }
       } else {
         missedFrames.current += 1;
@@ -72,15 +108,15 @@ export const useCardDetection = (
         setState('DETECTING');
       }
     } finally {
-      src.delete();
+      mat.delete();
     }
-  }, [cv, videoElement, points, state]);
+  }, [cv, videoRef, points, state, getCroppedFrame]);
 
   useEffect(() => {
-    if (videoElement && state === 'READY') {
+    if (videoRef.current && state === 'READY') {
       setState('DETECTING');
     }
-  }, [videoElement, state]);
+  }, [videoRef, state]);
 
   return {
     state,
