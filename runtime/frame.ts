@@ -1,9 +1,4 @@
-export const frameToMat = (
-  cv: any, 
-  video: HTMLVideoElement, 
-  canvas: HTMLCanvasElement, 
-  roi?: { x: number; y: number; width: number; height: number }
-): any | null => {
+export const frameToMat = (cv: any, video: HTMLVideoElement, canvas: HTMLCanvasElement): any | null => {
   if (video.videoWidth === 0 || video.videoHeight === 0) return null;
 
   const ctx = canvas.getContext("2d");
@@ -19,16 +14,5 @@ export const frameToMat = (
   ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
 
   // Convert to OpenCV Mat
-  const fullMat = cv.imread(canvas);
-
-  if (!roi) return fullMat;
-
-  // Apply ROI crop
-  const rect = new cv.Rect(roi.x, roi.y, roi.width, roi.height);
-  const croppedMat = fullMat.roi(rect);
-  
-  // Cleanup original
-  fullMat.delete();
-  
-  return croppedMat;
+  return cv.imread(canvas);
 };
