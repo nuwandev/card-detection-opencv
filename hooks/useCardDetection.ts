@@ -26,7 +26,7 @@ export const useCardDetection = (
   const process = useCallback(() => {
     if (!cv || !videoElement || !canvasRef.current) return;
 
-    const src = frameToMat(cv, videoElement, canvasRef.current);
+    const src = frameToMat(cv, videoElement, canvasRef.current, roi);
     if (!src) return;
     
     try {

@@ -10,18 +10,51 @@ export default function Home() {
   const webcamRef = useRef<Webcam>(null);
   
   const frameRef = useRef<HTMLDivElement>(null);
-  const [roi, setRoi] = useState<{x: number, y: number, width: number, height: number} | undefined>();
+  const [videoRoi, setVideoRoi] = useState<{x: number, y: number, width: number, height: number} | undefined>();
 
-  // Calculate ROI once the frame is mounted
   useEffect(() => {
-    if (frameRef.current) {
-      const rect = frameRef.current.getBoundingClientRect();
-      setRoi({ x: rect.left, y: rect.top, width: rect.width, height: rect.height });
-    }
+    const calculateVideoRoi = () => {
+      const video = webcamRef.current?.video;
+      const frame = frameRef.current;
+      if (!video || !frame || !video.videoWidth) return;
+      
+      const videoRect = video.getBoundingClientRect();
+      const frameRect = frame.getBoundingClientRect();
+      
+      const videoRatio = video.videoWidth / video.videoHeight;
+      const containerRatio = videoRect.width / videoRect.height;
+      
+      let displayWidth = videoRect.width;
+      let displayHeight = videoRect.height;
+      let offsetX = 0;
+      let offsetY = 0;
+      
+      if (containerRatio > videoRatio) {
+        displayWidth = videoRect.height * videoRatio;
+        offsetX = (videoRect.width - displayWidth) / 2;
+      } else {
+        displayHeight = videoRect.width / videoRatio;
+        offsetY = (videoRect.height - displayHeight) / 2;
+      }
+      
+      const scaleX = video.videoWidth / displayWidth;
+      const scaleY = video.videoHeight / displayHeight;
+      
+      setVideoRoi({
+        x: Math.max(0, (frameRect.left - videoRect.left - offsetX) * scaleX),
+        y: Math.max(0, (frameRect.top - videoRect.top - offsetY) * scaleY),
+        width: frameRect.width * scaleX,
+        height: frameRect.height * scaleY
+      });
+    };
+
+    calculateVideoRoi();
+    window.addEventListener('resize', calculateVideoRoi);
+    return () => window.removeEventListener('resize', calculateVideoRoi);
   }, []);
   
   // Hook usage: pass cv instance, video element, and the ROI
-  const { points, process } = useCardDetection(cv, webcamRef.current?.video || null, roi);
+  const { points, process } = useCardDetection(cv, webcamRef.current?.video || null, videoRoi);
 
   // Detection Loop (Throttled for performance)
   useEffect(() => {
@@ -75,7 +108,11 @@ export default function Home() {
   };
 
   const { scaleX, scaleY, offsetX, offsetY } = getScale();
-  const scaledPoints = points ? points.map(p => ({ 
+  
+  const scaledPoints = (points && videoRoi) ? points.map(p => ({ 
+    x: (p.x + videoRoi.x) * scaleX + offsetX, 
+    y: (p.y + videoRoi.y) * scaleY + offsetY 
+  })) : points ? points.map(p => ({ 
     x: p.x * scaleX + offsetX, 
     y: p.y * scaleY + offsetY 
   })) : null;
