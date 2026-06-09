@@ -29,5 +29,5 @@ export const useOpenCV = () => {
     };
   }, []);
 
-  return ready;
+  return { ready, cv: typeof window !== "undefined" ? window.cv : null };
 };

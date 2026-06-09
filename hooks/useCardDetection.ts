@@ -1,57 +1,59 @@
 "use client";
 
-import { useCallback, useRef } from "react";
+import { useCallback, useRef, useState } from "react";
 import { Point } from "../types/geometry";
-import { detectDocument } from "../utils/documentDetection";
+import { detectDocument } from "../lib/detector";
+import { frameToMat } from "../runtime/frame";
 
-const EMA_ALPHA = 0.3; // Smoothing factor
+const EMA_ALPHA = 0.15; // Lower alpha = smoother, less jittery
 
-export const useCardDetection = (cvReady: boolean) => {
-  const pointsRef = useRef<Point[] | null>(null);
+export const useCardDetection = (
+  cv: Window['cv'] | null,
+  videoElement: HTMLVideoElement | null,
+  roi?: { x: number; y: number; width: number; height: number }
+) => {
+  const [points, setPoints] = useState<Point[] | null>(null);
+  const canvasRef = useRef<HTMLCanvasElement>(
+    typeof document !== "undefined" ? document.createElement("canvas") : ({} as any)
+  );
 
-  const processFrame = useCallback((video: HTMLVideoElement, canvas: HTMLCanvasElement) => {
-    if (!cvReady || !window.cv) return;
+  const isPointInRoi = (p: Point) => {
+    if (!roi) return true;
+    return p.x >= roi.x && p.x <= roi.x + roi.width &&
+           p.y >= roi.y && p.y <= roi.y + roi.height;
+  };
 
-    const cv = window.cv;
-    const ctx = canvas.getContext("2d");
-    if (!ctx) return;
+  const process = useCallback(() => {
+    if (!cv || !videoElement || !canvasRef.current) return;
 
-    // Synchronize canvas size
-    if (canvas.width !== video.videoWidth || canvas.height !== video.videoHeight) {
-      canvas.width = video.videoWidth;
-      canvas.height = video.videoHeight;
-    }
-
-    // Capture frame to canvas
-    ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
-
-    const src = cv.imread(canvas);
+    const src = frameToMat(cv, videoElement, canvasRef.current);
+    if (!src) return;
     
     try {
       const detected = detectDocument(cv, src);
 
       if (detected) {
-        if (pointsRef.current) {
+        if (points) {
           // Linear Interpolation for smoothing
-          pointsRef.current = detected.map((p, i) => ({
-            x: p.x * EMA_ALPHA + pointsRef.current![i].x * (1 - EMA_ALPHA),
-            y: p.y * EMA_ALPHA + pointsRef.current![i].y * (1 - EMA_ALPHA),
-          }));
+          setPoints(detected.map((p, i) => ({
+            x: p.x * EMA_ALPHA + points[i].x * (1 - EMA_ALPHA),
+            y: p.y * EMA_ALPHA + points[i].y * (1 - EMA_ALPHA),
+          })));
         } else {
-          pointsRef.current = detected;
+          setPoints(detected);
         }
       } else {
-        pointsRef.current = null;
+        setPoints(null);
       }
     } catch (e) {
       console.error("Frame processing error:", e);
     } finally {
       src.delete();
     }
-  }, [cvReady]);
+  }, [cv, videoElement, points, roi]);
 
   return {
-    processFrame,
-    pointsRef
+    points,
+    process
   };
 };
