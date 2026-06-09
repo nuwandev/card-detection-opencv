@@ -10,61 +10,11 @@ export default function Home() {
   const webcamRef = useRef<Webcam>(null);
   const frameRef = useRef<HTMLDivElement>(null);
 
-  // Calculate scaling factor between video resolution and display size
-  const getScale = () => {
-    const video = webcamRef.current?.video;
-    if (!video || !video.videoWidth) return { scaleX: 1, scaleY: 1, offsetX: 0, offsetY: 0 };
-    
-    const rect = video.getBoundingClientRect();
-    const videoRatio = video.videoWidth / video.videoHeight;
-    const containerRatio = rect.width / rect.height;
-
-    let displayWidth = rect.width;
-    let displayHeight = rect.height;
-    let offsetX = 0;
-    let offsetY = 0;
-
-    // Handle object-contain (letterboxing)
-    if (containerRatio > videoRatio) {
-      displayWidth = rect.height * videoRatio;
-      offsetX = (rect.width - displayWidth) / 2;
-    } else {
-      displayHeight = rect.width / videoRatio;
-      offsetY = (rect.height - displayHeight) / 2;
-    }
-
-    return {
-      scaleX: video.videoWidth / displayWidth,
-      scaleY: video.videoHeight / displayHeight,
-      offsetX,
-      offsetY
-    };
-  };
-
-  const getROI = () => {
-    const video = webcamRef.current?.video;
-    const frame = frameRef.current;
-    if (!video || !frame || !video.videoWidth) return undefined;
-
-    const frameRect = frame.getBoundingClientRect();
-    const videoRect = video.getBoundingClientRect();
-    const { scaleX, scaleY, offsetX, offsetY } = getScale();
-
-    return {
-      x: Math.max(0, (frameRect.left - videoRect.left - offsetX) * scaleX),
-      y: Math.max(0, (frameRect.top - videoRect.top - offsetY) * scaleY),
-      width: Math.min(frameRect.width * scaleX, video.videoWidth),
-      height: Math.min(frameRect.height * scaleY, video.videoHeight)
-    };
-  };
-
-  const [roi, setRoi] = useState();
-
-  useEffect(() => {
-    setRoi(getROI());
-  }, [ready]); // Update ROI once initialized
-
-  const { state, points, process } = useCardDetection(cv, webcamRef.current?.video || null, roi);
+  const { state, points, process } = useCardDetection(
+    cv, 
+    { current: webcamRef.current?.video || null }, 
+    frameRef
+  );
 
   // Detection Loop (Throttled for performance)
   useEffect(() => {
@@ -86,9 +36,37 @@ export default function Home() {
     return () => cancelAnimationFrame(frameId);
   }, [ready, cv, process]);
 
+  const getScale = () => {
+    const video = webcamRef.current?.video;
+    if (!video || !video.videoWidth) return { scaleX: 1, scaleY: 1, offsetX: 0, offsetY: 0 };
+    
+    const rect = video.getBoundingClientRect();
+    const videoRatio = video.videoWidth / video.videoHeight;
+    const containerRatio = rect.width / rect.height;
+
+    let displayWidth = rect.width;
+    let displayHeight = rect.height;
+    let offsetX = 0;
+    let offsetY = 0;
+
+    if (containerRatio > videoRatio) {
+      displayWidth = rect.height * videoRatio;
+      offsetX = (rect.width - displayWidth) / 2;
+    } else {
+      displayHeight = rect.width / videoRatio;
+      offsetY = (rect.height - displayHeight) / 2;
+    }
+
+    return {
+      scaleX: video.videoWidth / displayWidth,
+      scaleY: video.videoHeight / displayHeight,
+      offsetX,
+      offsetY
+    };
+  };
+
   const { scaleX, scaleY, offsetX, offsetY } = getScale();
   const scaledPoints = points ? points.map(p => ({ 
-    // Points are in video coordinate space, need to scale to display space
     x: p.x * (1 / scaleX) + offsetX, 
     y: p.y * (1 / scaleY) + offsetY 
   })) : null;
