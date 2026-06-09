@@ -14,13 +14,19 @@ export const useCardDetection = (
 ) => {
   const [points, setPoints] = useState<Point[] | null>(null);
   const missedFrames = useRef(0); // Track missing frames
-  const canvasRef = useRef<HTMLCanvasElement>(
-    typeof document !== "undefined" ? document.createElement("canvas") : ({} as any)
-  );
+  const canvasRef = useRef<HTMLCanvasElement | null>(null);
+
+  // Initialize canvas only once on client
+  useEffect(() => {
+    if (typeof document !== "undefined" && !canvasRef.current) {
+      canvasRef.current = document.createElement("canvas");
+    }
+  }, []);
 
   const process = useCallback(() => {
     if (!cv || !videoElement || !canvasRef.current) return;
 
+    // Use runtime frame processor
     const src = frameToMat(cv, videoElement, canvasRef.current);
     if (!src) return;
 
