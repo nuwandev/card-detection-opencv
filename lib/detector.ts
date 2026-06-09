@@ -1,4 +1,4 @@
-import { Point } from "../types/geometry";
+import { Point, ROI } from "../types/geometry";
 import { orderCorners } from "../utils/geometry";
 
 const ID_ASPECT_RATIO = 1.58;
@@ -7,13 +7,22 @@ const MIN_AREA_RATIO = 0.05;
 
 /**
  * Detects a quadrilateral document within the provided image source.
- * Orchestrates the OpenCV image processing pipeline.
+ * Orchestrates the OpenCV image processing pipeline, optionally restricted to an ROI.
  */
-export function detectDocument(cv: any, src: any): Point[] | null {
+export function detectDocument(cv: any, src: any, roi?: ROI): Point[] | null {
+  // If an ROI is provided, focus processing on that region
+  let processingSrc = src;
+  let roiMat: any;
+  if (roi) {
+    const rect = new cv.Rect(roi.x, roi.y, roi.width, roi.height);
+    roiMat = src.roi(rect);
+    processingSrc = roiMat;
+  }
+
   const gray = new cv.Mat();
   const edges = new cv.Mat();
   const blurred = new cv.Mat();
-  cv.cvtColor(src, gray, cv.COLOR_RGBA2GRAY);
+  cv.cvtColor(processingSrc, gray, cv.COLOR_RGBA2GRAY);
   cv.GaussianBlur(gray, blurred, new cv.Size(5, 5), 0);
   cv.Canny(blurred, edges, 20, 100);
 
@@ -23,7 +32,7 @@ export function detectDocument(cv: any, src: any): Point[] | null {
   let bestQuad: Point[] | null = null;
   let bestScore = Infinity;
 
-  const minArea = src.cols * src.rows * MIN_AREA_RATIO;
+  const minArea = processingSrc.cols * processingSrc.rows * MIN_AREA_RATIO;
 
   for (let i = 0; i < contours.size(); i++) {
     const cnt = contours.get(i);
@@ -46,8 +55,10 @@ export function detectDocument(cv: any, src: any): Point[] | null {
       const ratio = Math.max(width, height) / Math.min(width, height);
       
       if (Math.abs(ratio - ID_ASPECT_RATIO) < RATIO_TOLERANCE) {
-        const ordered = orderCorners(pts);
-        const score = evaluateCandidate(cv, src, edges, ordered);
+        // Adjust points if ROI was applied
+        const adjustedPts = roi ? pts.map(p => ({ x: p.x + roi.x, y: p.y + roi.y })) : pts;
+        const ordered = orderCorners(adjustedPts);
+        const score = evaluateCandidate(cv, processingSrc, edges, ordered);
         
         if (score < bestScore) {
           bestScore = score;
@@ -58,6 +69,7 @@ export function detectDocument(cv: any, src: any): Point[] | null {
     approx.delete();
   }
 
+  if (roiMat) roiMat.delete();
   gray.delete(); edges.delete(); blurred.delete(); contours.delete();
   return bestQuad;
 }
@@ -68,6 +80,9 @@ export function detectDocument(cv: any, src: any): Point[] | null {
  */
 function evaluateCandidate(cv: any, src: any, edges: any, pts: Point[]): number {
   const mask = new cv.Mat.zeros(src.rows, src.cols, cv.CV_8U);
+  // Need to adjust points for mask creation if evaluating in global space, 
+  // but evaluation currently happens on processingSrc which might be ROI-scoped.
+  // Assuming pts are already relative to processingSrc.
   const poly = cv.matFromArray(4, 1, cv.CV_32SC2, [pts[0].x, pts[0].y, pts[1].x, pts[1].y, pts[2].x, pts[2].y, pts[3].x, pts[3].y]);
   const pols = new cv.MatVector();
   pols.push_back(poly);

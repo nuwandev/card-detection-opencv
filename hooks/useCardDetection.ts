@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useRef, useState, useEffect } from "react";
-import { Point } from "../types/geometry";
+import { Point, ROI } from "../types/geometry";
 import { detectDocument } from "../lib/detector";
 import { frameToMat } from "../runtime/frame";
 
@@ -18,7 +18,8 @@ export type DetectionState = 'READY' | 'DETECTING' | 'DETECTED' | 'ERROR';
  */
 export const useCardDetection = (
   cv: Window['cv'] | null,
-  videoElement: HTMLVideoElement | null
+  videoElement: HTMLVideoElement | null,
+  roi?: ROI
 ) => {
   const [state, setState] = useState<DetectionState>('READY');
   const [points, setPoints] = useState<Point[] | null>(null);
@@ -41,7 +42,7 @@ export const useCardDetection = (
     if (!src) return;
 
     try {
-      const detected = detectDocument(cv, src);
+      const detected = detectDocument(cv, src, roi);
 
       if (detected) {
         missedFrames.current = 0;

@@ -8,8 +8,28 @@ import { useCardDetection } from "@/hooks/useCardDetection";
 export default function Home() {
   const { ready, cv } = useOpenCV();
   const webcamRef = useRef<Webcam>(null);
+  const frameRef = useRef<HTMLDivElement>(null);
   
-  const { state, points, process } = useCardDetection(cv, webcamRef.current?.video || null);
+  const getROI = () => {
+    const video = webcamRef.current?.video;
+    const frame = frameRef.current;
+    if (!video || !frame || !video.videoWidth) return undefined;
+
+    const videoRect = video.getBoundingClientRect();
+    const frameRect = frame.getBoundingClientRect();
+
+    const scaleX = video.videoWidth / videoRect.width;
+    const scaleY = video.videoHeight / videoRect.height;
+
+    return {
+      x: (frameRect.left - videoRect.left) * scaleX,
+      y: (frameRect.top - videoRect.top) * scaleY,
+      width: frameRect.width * scaleX,
+      height: frameRect.height * scaleY
+    };
+  };
+
+  const { state, points, process } = useCardDetection(cv, webcamRef.current?.video || null, getROI());
 
   // Detection Loop (Throttled for performance)
   useEffect(() => {
@@ -92,7 +112,7 @@ export default function Home() {
             </p>
           </div>
 
-          <div className={`w-full max-w-sm aspect-[1.6] border-2 ${state === 'DETECTED' ? 'border-green-500' : 'border-white/30'} rounded-2xl shadow-[0_0_0_9999px_rgba(0,0,0,0.5)]`} />
+          <div ref={frameRef} className={`w-full max-w-sm aspect-[1.6] border-2 ${state === 'DETECTED' ? 'border-green-500' : 'border-white/30'} rounded-2xl shadow-[0_0_0_9999px_rgba(0,0,0,0.5)]`} />
 
           <div className="mb-8 px-4 py-2 bg-black/50 backdrop-blur-md rounded-lg">
             <p className="text-[10px] uppercase text-white/50 tracking-widest">
