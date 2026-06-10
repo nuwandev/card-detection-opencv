@@ -21,10 +21,39 @@ export function detectDocument(cv: Window['cv'], src: Mat): Point[] | null {
 
   try {
     cv.cvtColor(src, gray, cv.COLOR_RGBA2GRAY);
+
+    // TODO: Verify skin mask generation
+    const hsv = new cv.Mat();
+    const sm1 = new cv.Mat();
+    const sm2 = new cv.Mat();
+    const skinMask = new cv.Mat();
+    
+    cv.cvtColor(src, hsv, cv.COLOR_RGBA2RGB);
+    cv.cvtColor(hsv, hsv, cv.COLOR_RGB2HSV);
+    const lower1 = new cv.Mat(hsv.rows, hsv.cols, hsv.type(), [0, 15, 50, 0]);
+    const upper1 = new cv.Mat(hsv.rows, hsv.cols, hsv.type(), [22, 220, 255, 255]);
+    const lower2 = new cv.Mat(hsv.rows, hsv.cols, hsv.type(), [168, 15, 50, 0]);
+    const upper2 = new cv.Mat(hsv.rows, hsv.cols, hsv.type(), [180, 220, 255, 255]);
+    // cv.inRange(hsv, lower1, upper1, sm1);
+    // cv.inRange(hsv, lower2, upper2, sm2);
+    // cv.bitwise_or(sm1, sm2, skinMask);
+    // const sk = cv.getStructuringElement(cv.MORPH_ELLIPSE, new cv.Size(5, 5));
+    // cv.dilate(skinMask, skinMask, sk);
+
     cv.GaussianBlur(gray, blurred, new cv.Size(5, 5), 0);
     cv.Canny(blurred, edges, 20, 100);
 
+    // Suppress finger edges
+    // const skinEdges = new cv.Mat();
+    // cv.bitwise_and(edges, skinMask, skinEdges);
+    // cv.subtract(edges, skinEdges, edges);
+    // skinEdges.delete();
+
     cv.findContours(edges, contours, hierarchy, cv.RETR_EXTERNAL, cv.CHAIN_APPROX_SIMPLE);
+
+    // Cleanup local mats
+    hsv.delete(); sm1.delete(); sm2.delete(); skinMask.delete(); // sk.delete();
+    lower1.delete(); upper1.delete(); lower2.delete(); upper2.delete();
 
     const minArea = src.cols * src.rows * MIN_AREA_RATIO;
 
