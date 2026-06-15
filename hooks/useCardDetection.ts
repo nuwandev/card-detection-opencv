@@ -10,7 +10,7 @@ const EMA_ALPHA = 0.5;
 // Defines the buffer for failure before resetting the detected state.
 const MAX_MISSED_FRAMES = 5;
 
-export type DetectionState = 'READY' | 'DETECTING' | 'DETECTED' | 'ERROR';
+export type DetectionState = 'READY' | 'DETECTING' | 'STABILIZING' | 'READY_TO_CAPTURE' | 'ERROR';
 
 /**
  * Hook managing the card detection lifecycle.
@@ -19,12 +19,14 @@ export type DetectionState = 'READY' | 'DETECTING' | 'DETECTED' | 'ERROR';
 export const useCardDetection = (
   cv: Window['cv'] | null,
   videoRef: React.RefObject<HTMLVideoElement | { video: HTMLVideoElement | null } | null>,
-  frameRef: React.RefObject<HTMLElement | null>
+  frameRef: React.RefObject<HTMLElement | null>,
+  onDetectedStable?: () => void
 ) => {
   const [state, setState] = useState<DetectionState>('READY');
   const [points, setPoints] = useState<Point[] | null>(null);
   const [coverage, setCoverage] = useState<number>(0);
   const missedFrames = useRef(0);
+  const stabilityStartTime = useRef<number | null>(null);
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
 
   useEffect(() => {
@@ -100,7 +102,17 @@ export const useCardDetection = (
 
       if (detected) {
         missedFrames.current = 0;
-        setState('DETECTED');
+        
+        // Handle stability logic
+        if (state !== 'STABILIZING' && state !== 'READY_TO_CAPTURE') {
+          setState('STABILIZING');
+          stabilityStartTime.current = Date.now();
+        } else if (state === 'STABILIZING' && stabilityStartTime.current) {
+          if (Date.now() - stabilityStartTime.current >= 1500) {
+            setState('READY_TO_CAPTURE');
+            if (onDetectedStable) onDetectedStable();
+          }
+        }
         
         // Calculate coverage: how much of the ROI does the detected card fill?
         const cardArea = calculateArea(detected);
@@ -123,6 +135,7 @@ export const useCardDetection = (
         if (missedFrames.current >= MAX_MISSED_FRAMES) {
           setPoints(null);
           setState('DETECTING');
+          stabilityStartTime.current = null;
         }
       }
     } catch (e) {
@@ -132,11 +145,12 @@ export const useCardDetection = (
       if (missedFrames.current >= MAX_MISSED_FRAMES) {
         setPoints(null);
         setState('DETECTING');
+        stabilityStartTime.current = null;
       }
     } finally {
       mat.delete();
     }
-  }, [cv, videoRef, points, state, getCroppedFrame]);
+  }, [cv, videoRef, points, state, getCroppedFrame, onDetectedStable]);
 
   useEffect(() => {
     if (videoRef.current && state === 'READY') {

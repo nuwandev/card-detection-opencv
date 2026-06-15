@@ -16,7 +16,8 @@ export default function Home() {
   const { state, points, coverage, process } = useCardDetection(
     cv, 
     webcamRef, 
-    frameRef
+    frameRef,
+    () => console.log("Card detected and stable! Ready to capture.")
   );
 
   // Detection Loop (Throttled for performance)
@@ -39,7 +40,7 @@ export default function Home() {
 
   const scaledPoints = useMemo(() => scalePoints(points, displayScale), [points, displayScale]);
 
-  const isReadyToCapture = coverage > 0.85;
+  const isReadyToCapture = state === 'READY_TO_CAPTURE';
 
   return (
     <main className="fixed inset-0 bg-black flex items-center justify-center">
@@ -70,16 +71,16 @@ export default function Home() {
         {/* Guide Frame (Matches original visual flow) */}
         <div className="absolute inset-0 z-20 pointer-events-none flex flex-col items-center justify-between p-6">
           <div className="mt-8 px-4 py-2 bg-black/50 backdrop-blur-md rounded-full border border-white/10">
-            <p className={`text-[10px] font-bold uppercase tracking-widest ${state === 'DETECTED' ? (isReadyToCapture ? 'text-green-400' : 'text-blue-400') : 'text-amber-400'}`}>
-              ● {state} {isReadyToCapture && "• READY"}
+            <p className={`text-[10px] font-bold uppercase tracking-widest ${state === 'READY_TO_CAPTURE' ? 'text-green-400' : (state === 'STABILIZING' ? 'text-blue-400' : 'text-amber-400')}`}>
+              ● {state}
             </p>
           </div>
 
-          <div ref={frameRef} className={`w-full max-w-sm aspect-[1.6] border-2 transition-colors duration-200 ${isReadyToCapture ? 'border-green-500 shadow-[0_0_20px_rgba(34,197,94,0.3)]' : (state === 'DETECTED' ? 'border-blue-500' : 'border-white/30')} rounded-2xl shadow-[0_0_0_9999px_rgba(0,0,0,0.5)]`} />
+          <div ref={frameRef} className={`w-full max-w-sm aspect-[1.6] border-2 transition-colors duration-200 ${isReadyToCapture ? 'border-green-500 shadow-[0_0_20px_rgba(34,197,94,0.3)]' : (state === 'STABILIZING' ? 'border-blue-500' : 'border-white/30')} rounded-2xl shadow-[0_0_0_9999px_rgba(0,0,0,0.5)]`} />
 
           <div className="mb-8 px-4 py-2 bg-black/50 backdrop-blur-md rounded-lg">
             <p className="text-[10px] uppercase text-white/50 tracking-widest">
-              {isReadyToCapture ? 'HOLD STEADY' : (state === 'DETECTED' ? 'Get closer to frame' : 'Position card inside the frame')}
+              {isReadyToCapture ? 'READY TO CAPTURE' : (state === 'STABILIZING' ? 'HOLD STEADY' : 'Position card inside the frame')}
             </p>
           </div>
         </div>
@@ -89,7 +90,7 @@ export default function Home() {
           <svg className="absolute inset-0 w-full h-full z-10 pointer-events-none">
             <polygon
               points={scaledPoints.map(p => `${p.x},${p.y}`).join(" ")}
-              className="fill-green-500/20 stroke-green-500 stroke-6"
+              className={isReadyToCapture ? "fill-green-500/20 stroke-green-500 stroke-6" : "fill-blue-500/20 stroke-blue-500 stroke-6"}
             />
           </svg>
         )}
