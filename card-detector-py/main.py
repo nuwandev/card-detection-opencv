@@ -83,7 +83,7 @@ def unique_output_path(suffix: str) -> Path:
     """Create a fresh nic_<random> output name without using the input name."""
     suffix = suffix.lower()
     while True:
-        out_path = OUTPUTS_DIR / f"nic_{secrets.token_hex(4)}{suffix}"
+        out_path = OUTPUTS_DIR / f"non_nic_{secrets.token_hex(4)}{suffix}"
         if not out_path.exists():
             return out_path
 
@@ -94,37 +94,57 @@ def unique_output_path(suffix: str) -> Path:
 
 def process_image(image_path: Path) -> bool:
     """Load, detect, crop, and save.  Returns True on success."""
-    img = cv2.imread(str(image_path))
-    if img is None:
-        print(f"  [!] Could not read image - skipping.")
+    try:
+        img = cv2.imread(str(image_path))
+        if img is None:
+            print("  [!] Not a readable image - skipping.")
+            return False
+
+        quad = detect_document(img)
+        if quad is None:
+            print("  [ ] No card detected.")
+            return False
+
+        cropped = four_point_transform(img, pad_quad(quad, img.shape))
+
+        out_path = unique_output_path(image_path.suffix)
+        if not cv2.imwrite(str(out_path), cropped):
+            print("  [!] Could not save output - skipping.")
+            return False
+
+        print(f"  [OK] Saved -> {out_path.name}")
+        return True
+    except cv2.error as exc:
+        print(f"  [!] OpenCV could not process this file - skipping. ({exc})")
         return False
-
-    quad = detect_document(img)
-    if quad is None:
-        print(f"  [ ] No card detected.")
-        return False
-
-    cropped = four_point_transform(img, pad_quad(quad, img.shape))
-
-    out_path = unique_output_path(image_path.suffix)
-    cv2.imwrite(str(out_path), cropped)
-    print(f"  [OK] Saved -> {out_path.name}")
-    return True
 
 
 def main():
+    if not INPUTS_DIR.exists():
+        INPUTS_DIR.mkdir()
+        print(f"Created '{INPUTS_DIR}/'. Drop .jpg/.png (etc.) files there and re-run.")
+        sys.exit(0)
+
     OUTPUTS_DIR.mkdir(exist_ok=True)
 
-    images = [p for p in sorted(INPUTS_DIR.iterdir())
-              if p.suffix.lower() in SUPPORTED]
+    files = [p for p in sorted(INPUTS_DIR.iterdir()) if p.is_file()]
+    images = [p for p in files if p.suffix.lower() in SUPPORTED]
+    unsupported = [p for p in files if p.suffix.lower() not in SUPPORTED]
 
     if not images:
-        print(f"No images found in '{INPUTS_DIR}/'. "
-               "Drop .jpg/.png (etc.) files there and re-run.")
+        print(f"No supported images found in '{INPUTS_DIR}/'. "
+              "Drop .jpg/.png (etc.) files there and re-run.")
+        if unsupported:
+            print(f"Skipped {len(unsupported)} unsupported file(s).")
         sys.exit(0)
 
     ok = fail = skip = 0
     print(f"Processing {len(images)} image(s)...\n")
+
+    for file_path in unsupported:
+        print(f"-> {file_path.name}")
+        print("  [ ] Unsupported file type - skipping.")
+        skip += 1
 
     for img_path in images:
         print(f"-> {img_path.name}")
