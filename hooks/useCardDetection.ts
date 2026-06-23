@@ -1,12 +1,11 @@
 import { useCallback, useRef, useState, useEffect } from "react";
 import { Point } from "../types/geometry";
 import { detectDocument, DetectorConfig, DetectionMetrics, DEFAULT_DETECTOR_CONFIG } from "../lib/detector";
-import { calculateArea, orderCorners } from "../lib/geometry";
+import { calculateArea } from "../lib/geometry";
+import { DetectionState } from "@/features/card-vision/types";
 
 const EMA_ALPHA = 0.5;
 const MAX_MISSED_FRAMES = 5;
-
-export type DetectionState = 'READY' | 'DETECTING' | 'STABILIZING' | 'READY_TO_CAPTURE' | 'CAPTURED' | 'ERROR';
 
 function padQuad(pts: Point[], width: number, height: number, padding = 0.01): Point[] {
   const sumX = pts.reduce((sum, p) => sum + p.x, 0);
