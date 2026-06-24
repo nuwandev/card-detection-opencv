@@ -7,89 +7,12 @@ import {
   DEFAULT_DETECTOR_CONFIG,
 } from "../lib/detector";
 import { calculateArea } from "../lib/geometry";
+import { cropMatToDataUrl } from "../lib/utils/cropCard";
 import { DetectionState } from "@/features/card-vision/types";
 
 const EMA_ALPHA = 0.5;
 const MAX_MISSED_FRAMES = 5;
 
-function padQuad(
-  pts: Point[],
-  width: number,
-  height: number,
-  padding = 0.01,
-): Point[] {
-  const sumX = pts.reduce((sum, p) => sum + p.x, 0);
-  const sumY = pts.reduce((sum, p) => sum + p.y, 0);
-  const cx = sumX / 4;
-  const cy = sumY / 4;
-
-  return pts.map((p) => {
-    const px = cx + (p.x - cx) * (1 + padding);
-    const py = cy + (p.y - cy) * (1 + padding);
-    return {
-      x: Math.max(0, Math.min(width - 1, px)),
-      y: Math.max(0, Math.min(height - 1, py)),
-    };
-  });
-}
-
-function fourPointTransform(cv: OpenCV, src: Mat, pts: Point[]): Mat {
-  const widthTop = Math.hypot(pts[1].x - pts[0].x, pts[1].y - pts[0].y);
-  const widthBottom = Math.hypot(pts[2].x - pts[3].x, pts[2].y - pts[3].y);
-  const heightRight = Math.hypot(pts[2].x - pts[1].x, pts[2].y - pts[1].y);
-  const heightLeft = Math.hypot(pts[3].x - pts[0].x, pts[3].y - pts[0].y);
-
-  const detectedWidth = Math.max(widthTop, widthBottom);
-  const detectedHeight = Math.max(heightRight, heightLeft);
-
-  const OUT_LONG = 600;
-  const OUT_SHORT = Math.round(OUT_LONG / 1.585);
-
-  let outW = OUT_LONG;
-  let outH = OUT_SHORT;
-  if (detectedHeight > detectedWidth) {
-    outW = OUT_SHORT;
-    outH = OUT_LONG;
-  }
-
-  const srcTri = cv.matFromArray(4, 1, cv.CV_32FC2, [
-    pts[0].x,
-    pts[0].y,
-    pts[1].x,
-    pts[1].y,
-    pts[2].x,
-    pts[2].y,
-    pts[3].x,
-    pts[3].y,
-  ]);
-
-  const dstTri = cv.matFromArray(4, 1, cv.CV_32FC2, [
-    0,
-    0,
-    outW - 1,
-    0,
-    outW - 1,
-    outH - 1,
-    0,
-    outH - 1,
-  ]);
-
-  const M = cv.getPerspectiveTransform(srcTri, dstTri);
-  const dst = new cv.Mat();
-  const dsize = new cv.Size(outW, outH);
-  cv.warpPerspective(src, dst, M, dsize);
-
-  srcTri.delete();
-  dstTri.delete();
-  M.delete();
-
-  return dst;
-}
-
-/**
- * Hook managing the card detection lifecycle.
- * Accepts refs to the video (or Webcam component) and guide frame.
- */
 export const useCardDetection = (
   cv: Window["cv"] | null,
   videoRef: React.RefObject<
@@ -121,6 +44,7 @@ export const useCardDetection = (
     const current = videoRef.current;
     const video = current && "video" in current ? current.video : current;
     const frame = frameRef.current;
+
     if (
       !cv ||
       !video ||
@@ -151,7 +75,6 @@ export const useCardDetection = (
     const frameX = frameRect.left - containerRect.left;
     const frameY = frameRect.top - containerRect.top;
 
-    // Calculate bounding box crop and clamp within video dimensions to prevent out-of-bounds Canvas drawing errors
     const rawX = (frameX - offsetX) * scale;
     const rawY = (frameY - offsetY) * scale;
     const rawW = frameRect.width * scale;
@@ -195,7 +118,7 @@ export const useCardDetection = (
       return;
     }
 
-    if (capturedCard) return; // Freeze processing if we already captured a card
+    if (capturedCard) return;
 
     const cropped = getCroppedFrame();
     if (!cropped) return;
@@ -208,20 +131,15 @@ export const useCardDetection = (
         allCandidates,
         rawBest,
       } = detectDocument(cv, mat, config);
+
       setSecondBestScore(sbs);
       setCandidatesCount(allCandidates.length);
-
-      if (rawBest) {
-        setLastMetrics(rawBest.metrics);
-      } else {
-        setLastMetrics(null);
-      }
+      setLastMetrics(rawBest?.metrics ?? null);
 
       if (best) {
         const detected = best.points;
         missedFrames.current = 0;
 
-        // Handle stability logic
         if (state !== "STABILIZING" && state !== "READY_TO_CAPTURE") {
           setState("STABILIZING");
           stabilityStartTime.current = Date.now();
@@ -229,21 +147,12 @@ export const useCardDetection = (
           if (Date.now() - stabilityStartTime.current >= 1500) {
             setState("READY_TO_CAPTURE");
 
-            // Perform auto-capture perspective crop
-            const paddedPts = padQuad(detected, mat.cols, mat.rows, 0.01);
-            const croppedMat = fourPointTransform(cv, mat, paddedPts);
+            // ── Crop via shared utility — no duplicate logic here ──────────
+            const dataUrl = cropMatToDataUrl(cv, mat, detected);
 
-            const tempCanvas = document.createElement("canvas");
-            cv.imshow(tempCanvas, croppedMat);
-            const dataUrl = tempCanvas.toDataURL("image/jpeg", 0.95);
-
-            croppedMat.delete();
             setCapturedCard(dataUrl);
             setState("CAPTURED");
-
-            if (onDetectedStable) {
-              onDetectedStable(dataUrl);
-            }
+            onDetectedStable?.(dataUrl);
           }
         }
 
@@ -255,16 +164,14 @@ export const useCardDetection = (
           y: p.y + offset.y,
         }));
 
-        if (points) {
-          setPoints(
-            globalPoints.map((p, i) => ({
-              x: p.x * EMA_ALPHA + points[i].x * (1 - EMA_ALPHA),
-              y: p.y * EMA_ALPHA + points[i].y * (1 - EMA_ALPHA),
-            })),
-          );
-        } else {
-          setPoints(globalPoints);
-        }
+        setPoints((prev) =>
+          prev
+            ? globalPoints.map((p, i) => ({
+                x: p.x * EMA_ALPHA + prev[i].x * (1 - EMA_ALPHA),
+                y: p.y * EMA_ALPHA + prev[i].y * (1 - EMA_ALPHA),
+              }))
+            : globalPoints,
+        );
       } else {
         missedFrames.current += 1;
         setCoverage(0);
@@ -289,7 +196,6 @@ export const useCardDetection = (
   }, [
     cv,
     videoRef,
-    points,
     state,
     getCroppedFrame,
     onDetectedStable,
@@ -298,9 +204,7 @@ export const useCardDetection = (
   ]);
 
   useEffect(() => {
-    if (videoRef.current && state === "READY") {
-      setState("DETECTING");
-    }
+    if (videoRef.current && state === "READY") setState("DETECTING");
   }, [videoRef, state]);
 
   return {
